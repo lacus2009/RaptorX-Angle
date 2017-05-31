@@ -1,0 +1,5 @@
+Using gpu device 1: GeForce GTX TITAN X (CNMeM is disabled, cuDNN 5005)
+recursionlimit =  3000
+[('-p', '/mnt/home/ygao/myscripts/bitbucket/angle_pred_public/reintegration/out1/feat/3t47A.feat'), ('-m', '/mnt/home/ygao/myscripts/bitbucket/angle_pred_public/reintegration/models/model30'), ('-o', '/mnt/home/ygao/myscripts/bitbucket/angle_pred_public/reintegration/out2/probs/3t47A.prob30')] []
+#testData with 81
+PREDICTING... n_layers= 30 halfWinSize= 5 n_nodes= 100

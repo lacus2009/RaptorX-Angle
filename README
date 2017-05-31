@@ -1,0 +1,76 @@
+-----------------------
+ResNet_Package 
+date: 2017.03.30
+-----------------------
+
+Title:
+
+Author: Yujuan Gao
+Contact email: ygao@ttic.edu
+
+--------------------------------------------------------
+
+
+=========
+Abstract:
+=========
+
+
+ The predicting program of ResNet for a target or a list of proteins by using an ensemble of trained models.
+
+
+
+=============
+Requirements:
+=============
+
+1. Anaconda
+
+2. GPU
+
+3. Conda
+
+4. download the package
+
+  git clone https://github.com/lacus2009/angle_pred.git
+  cd angle_pred/
+
+
+======
+Usage:
+======
+
+1. feature_generation -> Generate feature files for angle prediction 
+
+ -- For a single protein
+    Usage: ./GenFeatures4SingleProtein.sh targetFile
+
+ -- For a list of targets
+    Usage: ./GenFeatures4Batch.sh targetList fastaDir
+
+    You will get all the related files and folders under ./out1 
+    (You can change the output directory in GenFeatures4SingleProtein.sh)
+
+2. angle_prediction -> Generate predicted real value angles for each target
+
+ -- For a single protein
+    Usage: ./PredAngles4SingleProtein.sh targetFile
+
+ -- For a list of targets
+    Usage: ./PredAngles4Batch.sh target_list fasta_dir
+
+    You will get the predicted real value angles in ./out2 
+    (You can change the output directory in PredAngles4SingleProtein.sh)
+
+
+========
+Example:
+========
+
+1. Generate feature files for angle prediction 
+   ./GenFeatures4SingleProtein.sh $(pwd)/examples/fasta/4ei0A.fasta
+   ./GenFeatures4Batch.sh $(pwd)/examples/test_list $(pwd)/examples/fasta
+
+2. Used an ensemble of trained models to predict angles
+   ./PredAngles4SingleProtein.sh $(pwd)/examples/fasta/4ei0A.fasta
+   ./PredAngles4Batch.sh $(pwd)/examples/test_list $(pwd)/examples/fasta
