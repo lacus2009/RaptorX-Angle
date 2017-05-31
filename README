@@ -32,8 +32,8 @@ Requirements:
 
 4. download the package
 
-  git clone https://github.com/lacus2009/angle_pred.git
-  cd angle_pred/
+  git clone https://bitbucket.org/yjgao1992/resnetangleprediction.git 
+  cd ResnetAnglePrediction/
 
 
 ======
