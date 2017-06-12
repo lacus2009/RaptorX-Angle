@@ -88,95 +88,6 @@ class ResConv1DLayer(object):
         self.paramL2 = (self.W**2).sum() + (self.b**2).sum()
 
 
-## 2D convolution on a matrix, no pooling is done here
-class ResConv2DLayer:
-    def __init__(self, rng, input, n_in = 0, n_out = 0, halfWinSize = 0, 
-                 rowmask = None, colmask = None, activation = T.nnet.relu):
-        ## input has shape (batchSize, n_in, nRows, nCols) 
-        ## where n_in is the number of input features at each entry of the matrix
-        ## nrows and ncols are the unknown matrix dimension
-
-        ## input[0], input[1], ...., input[batchSize-1] shall be aligned at the right bottom
-	## rowmask and colmask are two binary matrices with 0 indicating 
-        ## padding positions and 1 valid data positions
-        ## Mask is used to reduce noise introduced by padding. 
-        ## rowmask has shape (batchSize, #rows_to_be_masked, nCols)
-	## colmask has shape (batchSize, nRows, #cols_to_be_masked)
-
-        ## halfWinSize is the half window size of the filter shape
-	## output shall have shape (batchSize, n_out, nRows, nCols)
-
-	assert halfWinSize >= 0
-        assert n_out >= 0
-        assert n_in >= 0
-
-        self.input = input
-        self.n_in = n_in
-        self.halfWinSize = halfWinSize
-        self.rowmask = rowmask
-	self.colmask = colmask
-
-        ##the window size of our filters is always odd
-        wSize = 2*halfWinSize + 1
-	self.filter_size = wSize
-
-        W_shape = (n_out, n_in, wSize, wSize)
-	
-	if activation == T.nnet.relu:
-            W_values = np.asarray( 
-                rng.normal(scale = np.sqrt(2. / (n_in * wSize * wSize + n_out )), 
-                           size = W_shape), 
-                dtype = theano.config.floatX)
-	else:
-            W_values = np.asarray(
-            	rng.uniform(low = - np.sqrt(6. / (n_in * wSize * wSize + n_out )), 
-                            high =  np.sqrt(6. / (n_in * wSize * wSize + n_out )), 
-                            size = W_shape),
-            	dtype = theano.config.floatX)
-
-        W = theano.shared(value = W_values, name = 'ResConv2dlayer_W', borrow = True)
-
-        b_shape = (n_out, )
-        b_values = np.asarray(
-                rng.uniform(low = -.0, high =.0, size = b_shape), 
-                dtype = theano.config.floatX)
-        b = theano.shared(value = b_values, name = 'ResConv2dlayer_b', borrow = True)
-
-
-        ## conv2d_out and out2 have shape (batchSize, n_out, nRows, nCols)
-        conv2d_out = T.nnet.conv2d(input, W, filter_shape = W_shape, border_mode = 'half')
-        if activation is not None:
-            out2 = activation(conv2d_out + b.dimshuffle('x', 0, 'x', 'x'))
-        else:
-            out2 = conv2d_out + b.dimshuffle('x', 0, 'x', 'x')
-       
-        if rowmask is not None:
-            ## rowmask has shape (batchSize, #rows_to_be_masked, nCols)
-
-            ## a subtensor of out2 along the horiz direction
-            out2_sub_horiz = out2[:, :, :rowmask.shape[1], :]
-            mask_horiz = rowmask.dimshuffle(0, 'x', 1, 2)
-            out3 = T.set_subtensor(out2_sub_horiz, T.mul(out2_sub_horiz, mask_horiz))
-	    out2 = out3
-
-	if colmask is not None:
-	    ##colmask has shape (batchSize, nRows, #cols_to_be_masked)
-
-            ## a subtensor of out2 along the vertical direction
-            out2_sub_vertical = out2[:, :, :, :colmask.shape[2] ]
-            mask_vertical = colmask.dimshuffle(0, 'x', 1, 2)
-            out3 = T.set_subtensor(out2_sub_vertical, 
-                                   T.mul(out2_sub_vertical, 
-                                   mask_vertical))
-            out2 = out3
-
-        self.output = out2
-        self.n_out = n_out
-
-        self.params = [W, b]
-        self.paramL1 = (abs(W).sum() +  abs(b).sum())
-        self.paramL2 = ((W**2).sum() + (b**2).sum())
-
 ##note that here we do not consider mask, so the estimated mean and variance 
 ##may not be very accurate when there are too many padding zeros in x
 def batch_norm(x, n_in, eps = 1e-6):
@@ -221,7 +132,6 @@ class BatchNormLayer:
 
 
 
-## this class has been extensively tested in contact prediction
 class ResBlockV2:
 
     def __init__(self, rng, input, n_in, halfWinSize = 0, mask = None, 
@@ -248,10 +158,8 @@ class ResBlockV2:
 
 	if input.ndim == 3:
 	    ConvLayer = ResConv1DLayer
-	elif input.ndim == 4:
-	    ConvLayer = ResConv2DLayer
 	else:
-	    print 'the ndim of input can only be 3 or 4'
+	    print 'the ndim of input can only be 3'
 	    sys.exit(-1)
 
         if batchNorm:
@@ -268,38 +176,21 @@ class ResBlockV2:
 	    bnlayer2 = BatchNormLayer(l1.output, l1.n_out)
 	    input2 = activation(bnlayer2.output)
 
-	    ## add dropout code here
-	    if input.ndim == 3:
-	        l2 = ConvLayer(rng, input = input2, n_in = l1.n_out, n_out = self.n_out, 
-                               halfWinSize = halfWinSize, mask = mask, activation = None)
-	    else:
-	        l2 = ConvLayer(rng, input = input2, n_in = l1.n_out, n_out = self.n_out, 
-                               halfWinSize = halfWinSize, rowmask = mask, 
-                               colmask = mask_2, activation = None)
+	    l2 = ConvLayer(rng, input = input2, n_in = l1.n_out, n_out = self.n_out, 
+                           halfWinSize = halfWinSize, mask = mask, activation = None)
 
 	    self.layers = [bnlayer1, l1, bnlayer2, l2]
 	else:
 	    #input1 = input
 	    input1 = activation(input)
 
-	    if input.ndim == 3:
-	        l1 = ConvLayer(rng, input = input1, n_in = n_in, n_out = self.n_out, 
-                               halfWinSize = halfWinSize, mask = mask, activation = None)
-	    else:
-	    	l1 = ConvLayer(rng, input = input1, n_in = n_in, n_out = self.n_out, 
-                               halfWinSize = halfWinSize, rowmask = mask, 
-                               colmask = mask_2, activation = None)
+	    l1 = ConvLayer(rng, input = input1, n_in = n_in, n_out = self.n_out, 
+                           halfWinSize = halfWinSize, mask = mask, activation = None)
 
 	    input2 = activation(l1.output)
 
-	    ## add dropout code here
-	    if input.ndim == 3:
-	        l2 = ConvLayer(rng, input = input2, n_in = l1.n_out, n_out = self.n_out, 
-                               halfWinSize = halfWinSize, mask = mask, activation = None)
-	    else:
-	        l2 = ConvLayer(rng, input = input2, n_in = l1.n_out, n_out = self.n_out, 
-                               halfWinSize = halfWinSize, rowmask = mask, 
-                               colmask = mask_2, activation = None)
+	    l2 = ConvLayer(rng, input = input2, n_in = l1.n_out, n_out = self.n_out, 
+                           halfWinSize = halfWinSize, mask = mask, activation = None)
 
 	    self.layers = [l1, l2]
 
@@ -309,14 +200,8 @@ class ResBlockV2:
 
 	if dim_inc_method == 'full_projection':
 	    ## we do 1*1 convolution here without any nonlinear transformation
-	    if input.ndim == 3:
-	        linlayer = ConvLayer(rng, input = input, n_in = n_in, n_out = self.n_out, 
-                                     halfWinSize = 0, mask = mask, activation = None)
-	    else:
-	        linlayer = ConvLayer(rng, input = input, n_in = n_in, n_out = self.n_out, 
-                                     halfWinSize = 0, rowmask = mask, colmask = mask_2, 
-                                     activation = None)
-
+	    linlayer = ConvLayer(rng, input = input, n_in = n_in, n_out = self.n_out, 
+                                 halfWinSize = 0, mask = mask, activation = None)
 	    intermediate = intermediate + linlayer.output
 	    self.layers.append(linlayer)
 	    #print 'projection is True'
@@ -324,10 +209,8 @@ class ResBlockV2:
 	elif dim_inc_method == 'identity':
 	    if input.ndim == 3:
 	    	intermediate = T.inc_subtensor(intermediate[:, :n_in, :], input)
-	    elif input.ndim == 4:
-	    	intermediate = T.inc_subtensor(intermediate[:, :n_in, :, :], input)
 	    else:
-	    	print 'the ndim of input can only be 3 or 4'
+	    	print 'the ndim of input can only be 3'
 	    	sys.exit(-1)
 	    print 'only projection is supported'
 	    sys.exit(-1)
@@ -336,15 +219,9 @@ class ResBlockV2:
 	    if self.n_out == n_in:
 		intermediate = intermediate + input
 	    else:
-		if input.ndim == 3:
-		    linlayer = ConvLayer(rng, input = input, n_in = n_in, 
-                                         n_out = self.n_out - n_in, halfWinSize=0, 
-                                         mask=mask, activation=None)
-		else:
-		    linlayer = ConvLayer(rng, input = input, n_in = n_in, 
-                                         n_out = self.n_out - n_in, halfWinSize=0, 
-                                         rowmask=mask, colmask=mask_2, 
-                                         activation=None)
+		linlayer = ConvLayer(rng, input = input, n_in = n_in, 
+                                     n_out = self.n_out - n_in, halfWinSize=0, 
+                                     mask=mask, activation=None)
 		self.layers.append(linlayer)
 
 		intermediate = (intermediate + 
@@ -394,26 +271,17 @@ class ResNet:
 	if input.ndim == 3:
 	    ConvLayer = ResConv1DLayer
 	    input2 = input.dimshuffle(0, 2, 1)
-	elif input.ndim == 4:
-	    ConvLayer = ResConv2DLayer
-	    input2 = input.dimshuffle(0, 3, 1, 2)
 	else:
-	    print 'the ndim of input can only be 3 or 4!'
+	    print 'the ndim of input can only be 3!'
 	    sys.exit(-1)
 
 	ResBlock = ResBlockV2
 
 	blocks = []
 
-	if input.ndim == 3:
-	    startLayer = ConvLayer(rng, input = input2, n_in = n_in, 
+	startLayer = ConvLayer(rng, input = input2, n_in = n_in, 
                                    n_out = n_hiddens[0], halfWinSize = halfWinSize,
                                    mask = mask, activation = activation)
-	else:
-	    startLayer = ConvLayer(rng, input = input2, n_in = n_in, 
-                                   n_out = n_hiddens[0], halfWinSize = halfWinSize, 
-                                   rowmask = mask, colmask = mask_2, 
-                                   activation = activation)
 
 	blocks.append(startLayer)
 
@@ -424,7 +292,7 @@ class ResNet:
 	    new_block = ResBlock(rng, input = curr_block.output, n_in = n_hiddens[0], 
                                  mask = mask, mask_2 = mask_2, halfWinSize = halfWinSize, 
                                  activation = activation, dim_inc_method = dim_inc_method, 
-                                 batchNorm=batchNorm)
+                                 batchNorm = batchNorm)
 	    blocks.append(new_block)
 	    curr_block = new_block
 
@@ -458,10 +326,8 @@ class ResNet:
         ## or (batchSize, nCols, n_out)
 	if input.ndim == 3:
 	    self.output = out2.dimshuffle(0, 2, 1)
-	elif input.ndim == 4:
-	    self.output = out2.dimshuffle(0, 2, 3, 1)
 	else:
-	    print 'the ndim of input can only be 3 or 4!'
+	    print 'the ndim of input can only be 3!'
 	    sys.exit(-1)
 
 	self.params = []
@@ -474,51 +340,14 @@ class ResNet:
 
 	self.layers = blocks
 
-def TestConvLayers():
-
-    from Conv1d import Conv1DLayer
-    from Conv2d import Conv2DLayer
-
-    rng = np.random.RandomState()
-    n_in = 3
-    n_out = 4
-    seqLen = 15
-    nRows = 20
-    nCols = 20
-
-    m = T.tensor3('m')
-    x = T.tensor4('x')
-    x2 = x.dimshuffle(0, 3, 1, 2)
-    #l1 = ResConv2DLayer(rng, input = x2, n_in = n_in, n_out = n_out, 
-    #                    halfWinSize = 1, activation = T.nnet.relu, mask = m )
-    l1 = ResConv2DLayer(rng, input = x2, n_in = n_in, n_out = n_out, 
-                        halfWinSize = 1, activation = T.nnet.relu )
-    y = l1.output.dimshuffle(0, 2, 3, 1)
-    #f = theano.function([x], y)
-
-    cost = T.mean( (y)**2 )
-    params = l1.params
-    gparams = T.grad(cost, params)
-    #h = theano.function([x, m], gparams)
-    h = theano.function([x], gparams)
-
-    bSize = 2
-    a = np.random.uniform(0, 1, (bSize, nRows, nCols, n_in))
-    m_value = np.ones( (bSize, 1, nCols) )
-    #gs = h(a, m_value)
-    gs = h(a)
-
-    for g in gs:
-	print g.shape
 
 def TestResNet():
     rng = np.random.RandomState()
     n_in = 3
     n_out = 4
     nRows = 20
-    nCols = 20
-    m = T.tensor3('m')
-    x = T.tensor4('x')
+    m = T.fmatrix('m')
+    x = T.tensor3('x')
     net = ResNet(rng, input = x, n_in = n_in, halfWinSize = 1, 
                  n_hiddens = [30, 35, 40, 45], n_repeats = [5, 1, 0, 2], 
                  activation = T.tanh, mask = m)
@@ -528,8 +357,8 @@ def TestResNet():
     f = theano.function([x, m], y, on_unused_input='warn')
 
     bSize = 2
-    a = np.random.uniform(0, 1, (bSize, nRows, nCols, n_in))
-    m_value = np.ones( (bSize, 2, nCols) )
+    a = np.random.uniform(0, 1, (bSize, nRows, n_in))
+    m_value = np.ones( (bSize, 2) )
 
     """
     b = f(a, m_value)
@@ -545,14 +374,14 @@ def TestResNet():
     params = net.params 
     gparams = T.grad(cost, params)
     h = theano.function([x, m], gparams, on_unused_input = 'warn')
-    gs = h(a, m_value)
+    #gs = h(a, m_value)
 
 #    for g in gs:
 #	print g.shape
 #	#print g
 
     updates = [ (p, p - 0.03 * g) for p, g in zip(params, gparams) ]
-    train = theano.function([x, m], [cost, loss, paramL2], updates = updates)
+    train = theano.function([x, m], [cost, loss, paramL2], updates = updates, allow_input_downcast=True)
 
     for i in xrange(10):
 	c, los, l2 = train(a, m_value)
